@@ -1,0 +1,18 @@
+[project]
+name = "moneyball-scout"
+version = "0.1.0"
+description = "Predict football players' market value, find undervalued players, and explain why."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "realdata: needs data/raw (skipped automatically when absent, e.g. in CI)",
+]

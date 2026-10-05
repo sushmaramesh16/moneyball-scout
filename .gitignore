@@ -1,6 +1,24 @@
+# Environments & secrets
 .venv/
-data/
 .env
+
+# Experiment tracking
 mlruns/
-__pycache__/
+mlartifacts/
+mlflow.db
+
+# Data: raw Transfermarkt dump (~900 MB) and all intermediates stay local
+/data/
 *.duckdb
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
