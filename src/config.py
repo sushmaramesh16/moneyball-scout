@@ -26,6 +26,23 @@ LEAGUES = (
     "SC1",
 )
 
+LEAGUE_NAMES = {
+    "GB1": "Premier League (England)",
+    "ES1": "LaLiga (Spain)",
+    "IT1": "Serie A (Italy)",
+    "L1": "Bundesliga (Germany)",
+    "FR1": "Ligue 1 (France)",
+    "NL1": "Eredivisie (Netherlands)",
+    "PO1": "Liga Portugal (Portugal)",
+    "BE1": "Jupiler Pro League (Belgium)",
+    "TR1": "Süper Lig (Türkiye)",
+    "RU1": "Premier Liga (Russia)",
+    "UKR1": "Premier Liga (Ukraine)",
+    "GR1": "Super League (Greece)",
+    "DK1": "Superliga (Denmark)",
+    "SC1": "Premiership (Scotland)",
+}
+
 # UEFA club competitions. Note the dataset types EL / UECL as "other", not "international_cup".
 EURO_COMPS = ("CL", "CLQ", "EL", "ELQ", "UCOL", "ECLQ", "USC")
 
