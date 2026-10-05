@@ -61,3 +61,47 @@ def test_missing_outcomes_count_as_failures_in_robustness_check():
     # 5 risers among the 9 flagged (one of which has no outcome)
     assert r["hit_raw_missing_as_fail"] == pytest.approx(5 / 9)
     assert r["lift_raw_missing_as_fail"] == pytest.approx((5 / 9) / (5 / 10))
+
+
+def _scored(n=400, seed=0, informative=True):
+    rng = np.random.default_rng(seed)
+    change = rng.normal(size=n)
+    score = change + rng.normal(scale=0.5, size=n) if informative else rng.normal(size=n)
+    df = pd.DataFrame(
+        {
+            "s_x": score,
+            "cell": rng.choice(["a", "b"], size=n),
+            "has_outcome": True,
+            "outcome_log_change": change,
+            "target_value": rng.choice([1e5, 1e6], size=n),
+        }
+    )
+    df["outcome_rel_change"] = df["outcome_log_change"]
+    df["hit_raw"] = df.outcome_log_change > 0
+    df["hit_rel"] = df.hit_raw
+    return df
+
+
+def test_bootstrap_ci_brackets_point_and_detects_signal():
+    good = backtest.bootstrap_ci(_scored(), "x", 40, n_boot=200)
+    assert good["hit_raw_ci_low"] <= good["hit_raw"] <= good["hit_raw_ci_high"]
+    assert good["matched_lift_raw_ci_low"] > 1  # informative score beats its baseline
+    noise = backtest.bootstrap_ci(_scored(informative=False), "x", 40, n_boot=200)
+    assert noise["lift_raw_ci_low"] < 1 < noise["lift_raw_ci_high"]
+
+
+def test_bootstrap_matches_evaluate_strategy_point_estimate():
+    df = _scored()
+    b = backtest.bootstrap_ci(df, "x", 40, n_boot=10)
+    e = backtest.evaluate_strategy(df, "x", 40, "top_40")
+    assert b["hit_raw"] == pytest.approx(e["hit_raw"])
+    assert b["matched_lift_raw"] == pytest.approx(e["matched_lift_raw"])
+
+
+def test_floor_analysis_restricts_universe(monkeypatch):
+    monkeypatch.setitem(backtest.FLOOR_LABELS, 1999, "test")
+    df = _scored()
+    df["s_model_raw"] = df["s_model_debiased"] = df["s_x"]
+    out = backtest.floor_analysis(df, 1999, floor=5e5)
+    universe = out.groupby("floor_eur").n_universe.first()
+    assert universe[0] == len(df) and universe[5e5] == (df.target_value >= 5e5).sum()

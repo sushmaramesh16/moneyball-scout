@@ -89,3 +89,7 @@ EU_EEA_CITIZENSHIPS = (
 # UK nations count as EU for seasons that ended before Brexit took effect.
 UK_CITIZENSHIPS = ("England", "Scotland", "Wales", "Northern Ireland")
 BREXIT_DATE = "2021-01-01"
+
+# Undervalued lists: default minimum actual value. Chosen after inspecting 2024/25,
+# validated on 2023/24 (see reports/stage4/backtest_floor.csv).
+VALUE_FLOOR = 500_000

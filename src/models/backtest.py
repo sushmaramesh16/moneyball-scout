@@ -43,6 +43,12 @@ from src.models.tune import load_best_params
 REPORTS_DIR = config.ROOT / "reports" / "stage4"
 FLAG_SEASONS = {2023: "optimistic (tuning season)", 2024: "headline (out-of-sample)"}
 MODEL_STRATEGIES = ["model_raw", "model_debiased", "linear_raw"]
+HEADLINE_SEASON = 2024
+FLOOR_LABELS = {
+    2023: "floor validation (pre-specified check of the floor)",
+    2024: "exploratory/confirmatory (floor chosen after seeing 2024/25)",
+}
+N_BOOT = 2000
 YOUNG_MAX_AGE = 23
 
 
@@ -209,6 +215,75 @@ def run_season(panel: pd.DataFrame, season: int, params: dict):
     return df, results, miss, ic
 
 
+def floor_analysis(df: pd.DataFrame, season: int, floor: float = config.VALUE_FLOOR):
+    """Same evaluation restricted to players worth >= ``floor`` at flag time (decile,
+    base rate and matched cells all recomputed within that group), next to the
+    no-floor result. Scores are unchanged: the floor is a display filter."""
+    rows = []
+    for floor_value in (0, floor):
+        sub = df[df.target_value >= floor_value].reset_index(drop=True)
+        decile = int(np.ceil(len(sub) / 10))
+        evals = [evaluate_strategy(sub, "all", None, "all")]
+        for strategy in ("model_raw", "model_debiased"):
+            for k, k_label in ((decile, "top_decile"), (100, "top_100")):
+                r = evaluate_strategy(sub, strategy, k, k_label)
+                r["ic"] = rank_ic(sub, strategy, "outcome_log_change")["ic"]
+                evals.append(r)
+        for r in evals:
+            rows.append({"floor_eur": floor_value, "n_universe": len(sub), **r})
+    out = pd.DataFrame(rows)
+    out.insert(0, "season", season)
+    out.insert(1, "label", FLOOR_LABELS[season])
+    return out
+
+
+def bootstrap_ci(
+    df: pd.DataFrame, strategy: str, k: int, n_boot: int = N_BOOT, seed: int = pipelines.SEED
+) -> dict:
+    """Percentile 95% intervals for hit rate, lift and matched lift (raw outcome).
+
+    Each replicate resamples the whole season's players with replacement, re-selects
+    the top k by score and recomputes the base rate and age x value cell rates, so the
+    interval reflects uncertainty in who gets flagged as well as in outcomes.
+    """
+    score = df[f"s_{strategy}"].to_numpy(float)
+    known = df["has_outcome"].to_numpy(bool)
+    rose = (df["outcome_log_change"] > 0).to_numpy(float)
+    cell = np.unique(df["cell"].astype(str), return_inverse=True)[1]
+    n_cells = cell.max() + 1
+    rng = np.random.default_rng(seed)
+
+    def stats_for(idx):
+        s, kn, h, c = score[idx], known[idx], rose[idx], cell[idx]
+        ranked = np.argsort(-np.where(np.isnan(s), -np.inf, s), kind="stable")[:k]
+        flagged = ranked[~np.isnan(s[ranked])]
+        fk = flagged[kn[flagged]]
+        cnt = np.bincount(c[kn], minlength=n_cells)
+        hits = np.bincount(c[kn], weights=h[kn], minlength=n_cells)
+        cell_rate = hits / np.maximum(cnt, 1)
+        hit = h[fk].mean()
+        return hit, hit / h[kn].mean(), hit / cell_rate[c[fk]].mean()
+
+    point = stats_for(np.arange(len(df)))
+    reps = np.array([stats_for(rng.integers(0, len(df), len(df))) for _ in range(n_boot)])
+    lo, hi = np.percentile(reps, [2.5, 97.5], axis=0)
+    out = {"strategy": strategy, "k": k, "n_boot": n_boot}
+    for i, name in enumerate(("hit_raw", "lift_raw", "matched_lift_raw")):
+        out |= {name: point[i], f"{name}_ci_low": lo[i], f"{name}_ci_high": hi[i]}
+    return out
+
+
+def headline_bootstrap(df: pd.DataFrame) -> pd.DataFrame:
+    decile = int(np.ceil(len(df) / 10))
+    rows = []
+    for strategy in ("model_debiased", "model_raw"):
+        for k, k_label in ((decile, "top_decile"), (100, "top_100")):
+            rows.append({"k_label": k_label, **bootstrap_ci(df, strategy, k)})
+    for strategy in ("young_regulars", "mean_reversion"):  # comparison strategies
+        rows.append({"k_label": "top_decile", **bootstrap_ci(df, strategy, decile)})
+    return pd.DataFrame(rows)
+
+
 def _log_csv(df: pd.DataFrame, name: str) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / name
@@ -227,7 +302,7 @@ def main() -> None:
     panel = pd.read_parquet(config.PANEL_PATH)
     params = load_best_params()
 
-    all_results, all_miss, all_ic = [], [], []
+    all_results, all_miss, all_ic, all_floor = [], [], [], []
     for season, label in FLAG_SEASONS.items():
         with mlflow.start_run(run_name=f"backtest-{season}"):
             mlflow.set_tags({"stage": "4-backtest", "label": label, "git_commit": _git_commit()})
@@ -254,6 +329,13 @@ def main() -> None:
             _log_csv(results, f"backtest_{season}.csv")
             _log_csv(miss, f"missingness_{season}.csv")
             _log_csv(ic, f"rank_ic_{season}.csv")
+            floor = floor_analysis(df, season)
+            _log_csv(floor, f"floor_{season}.csv")
+            if season == HEADLINE_SEASON:
+                boot = headline_bootstrap(df)
+                _log_csv(boot, f"bootstrap_{season}.csv")
+                boot.insert(0, "season", season)
+                boot.to_csv(REPORTS_DIR / "backtest_bootstrap.csv", index=False)
         keep = [
             "player_id",
             "season",
@@ -274,11 +356,13 @@ def main() -> None:
         all_results.append(results)
         all_miss.append(miss)
         all_ic.append(ic)
+        all_floor.append(floor)
         print(f"season {season} ({label}) done")
 
     pd.concat(all_results).to_csv(REPORTS_DIR / "backtest.csv", index=False)
     pd.concat(all_miss).to_csv(REPORTS_DIR / "backtest_missingness.csv", index=False)
     pd.concat(all_ic).to_csv(REPORTS_DIR / "backtest_rank_ic.csv", index=False)
+    pd.concat(all_floor).to_csv(REPORTS_DIR / "backtest_floor.csv", index=False)
 
 
 if __name__ == "__main__":
