@@ -1,0 +1,6 @@
+.venv/
+data/
+.env
+mlruns/
+__pycache__/
+*.duckdb
