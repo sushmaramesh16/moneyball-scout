@@ -37,4 +37,5 @@ def _no_llm(monkeypatch, tmp_path):
     monkeypatch.setenv("REPORT_MIN_INTERVAL", "0")
     from src.explain import report
 
+    monkeypatch.setattr(report, "_streamlit_secret", lambda name: None)  # ignore secrets.toml
     report._memory.clear()

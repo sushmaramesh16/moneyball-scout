@@ -4,7 +4,7 @@
 prediction, with a backtest that checks whether "undervalued" players' values actually
 rose afterwards.**
 
-**Live demo:** _coming soon: `https://huggingface.co/spaces/<your-username>/moneyball-scout`_
+**Live demo:** _coming soon: `https://<your-app-name>.streamlit.app`_
 
 | Scout a player | Undervalued Gems | Backtest |
 |---|---|---|
@@ -166,7 +166,7 @@ Other checks:
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt            # full stack; requirements-deploy.txt = app only
+pip install -r requirements.txt            # everything (app runtime + training + dev)
 
 # Use the committed artifacts: no raw data needed
 streamlit run app/streamlit_app.py         # http://localhost:8501
@@ -205,22 +205,35 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 | `GET /players`, `/players/{id}`, `/backtest`, `/model/importance`, `/health` | Search, details, backtest tables, global SHAP |
 
 ### Tests & CI
-`pytest` runs 133 tests covering cleaning, feature values, leakage, models, the backtest
+`pytest` runs 138 tests covering cleaning, feature values, leakage, models, the backtest
 math, SHAP additivity, the API, the Streamlit pages and the report logic (with a fake
 LLM). Real-data leakage tests skip automatically when `data/raw` is absent, as in CI.
 GitHub Actions runs `ruff check`, `ruff format --check`, `pytest` and a Docker build with
 an API smoke test.
 
-## Deploy to Hugging Face Spaces (Docker SDK)
+## Deploy (Streamlit Community Cloud, free)
 
-```bash
-./scripts/build_hf_space.sh                 # assembles dist/hf-space (about 11 MB, no data, no secrets)
-pip install -U huggingface_hub && hf auth login
-hf repos create <user>/moneyball-scout --type space --sdk docker
-hf upload <user>/moneyball-scout dist/hf-space . --repo-type space
-```
-Then, in the Space's **Settings → Variables and secrets**, add the secret
-`GEMINI_API_KEY` (optional; without it the AI notes are hidden).
+The live demo runs on [Streamlit Community Cloud](https://streamlit.io/cloud), straight
+from this GitHub repo. No API server is needed: the app loads `artifacts/` directly.
+
+- **Entrypoint:** `app/streamlit_app.py`, with **Python 3.11** chosen under *Advanced
+  settings*.
+- **Dependencies:** `app/requirements.txt` sits next to the entrypoint, so Community Cloud
+  installs it instead of the root `requirements.txt`. It holds only the pinned runtime
+  (no mlflow, xgboost or duckdb), with versions kept identical to
+  `requirements-deploy.txt` by a test.
+- **System packages:** `packages.txt` installs `libgomp1` (OpenMP, needed by LightGBM).
+- **AI notes (optional):** add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the
+  app's *Secrets* as TOML. The app reads environment variables first, then
+  `st.secrets`. Locally you can use `.env` or `.streamlit/secrets.toml` (both gitignored).
+  Without a key, the AI section is hidden.
+- **Report cache:** stored in `.cache/reports`, falling back to the system temp dir if
+  that isn't writable.
+
+**Docker** remains the way to run the full stack (FastAPI + Streamlit) locally:
+`docker compose up --build`. The same image also works as a Hugging Face **Docker
+Space** (`./scripts/build_hf_space.sh` assembles the bundle), but Docker Spaces now
+require a paid Hugging Face plan, so the free demo uses Community Cloud instead.
 
 ## Project layout
 
@@ -234,5 +247,5 @@ src/api/         FastAPI app + schemas
 app/             Streamlit app (scout, gems, backtest, model pages)
 artifacts/       model.joblib, players_live.parquet, intervals, SHAP importance
 reports/         comparison, tuning, test and backtest tables
-tests/           133 tests, including synthetic Transfermarkt-shaped fixtures
+tests/           138 tests, including synthetic Transfermarkt-shaped fixtures
 ```

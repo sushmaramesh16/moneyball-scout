@@ -2,12 +2,14 @@
 
 The model only sees the facts we pass (season stats, valuation numbers, the SHAP drivers
 and how reliable the model is) and is told not to add anything else. The feature is off
-unless GEMINI_API_KEY is set (.env locally, a Space secret when deployed).
+unless GEMINI_API_KEY is set: environment variable / .env locally, or Streamlit secrets
+(.streamlit/secrets.toml, or the app's Secrets setting on Streamlit Community Cloud).
 
-Environment:
+Settings (environment first, then Streamlit secrets):
     GEMINI_API_KEY      required to enable reports
     GEMINI_MODEL        default gemini-3.5-flash-lite (free tier)
-    REPORT_CACHE_DIR    default .cache/reports (one JSON per player/model/prompt version)
+    REPORT_CACHE_DIR    default .cache/reports, falling back to the system temp dir when
+                        that is not writable (one JSON per player/model/prompt version)
     REPORT_MIN_INTERVAL seconds between API calls, default 4 (stays under free-tier RPM)
 """
 
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import threading
 import time
 from datetime import UTC, datetime
@@ -62,12 +65,34 @@ class ReportError(RuntimeError):
     """The model call failed or returned nothing usable."""
 
 
+def _streamlit_secret(name: str) -> str | None:
+    """st.secrets[name] when running inside a Streamlit app, else None. Never raises:
+    a missing secrets.toml or a non-Streamlit process (the API) just means 'not set'."""
+    try:
+        from streamlit import runtime
+
+        if not runtime.exists():
+            return None
+        import streamlit as st
+
+        value = st.secrets.get(name)
+    except Exception:
+        return None
+    return str(value).strip() if value else None
+
+
+def setting(name: str) -> str | None:
+    """Environment variable first, then Streamlit secrets."""
+    value = os.environ.get(name, "").strip()
+    return value or _streamlit_secret(name)
+
+
 def model_name() -> str:
-    return os.environ.get("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    return setting("GEMINI_MODEL") or DEFAULT_MODEL
 
 
 def is_available() -> bool:
-    if not os.environ.get("GEMINI_API_KEY", "").strip():
+    if not setting("GEMINI_API_KEY"):
         return False
     try:
         import google.genai  # noqa: F401
@@ -149,8 +174,24 @@ _throttle = _Throttle()
 _memory: dict[str, dict] = {}
 
 
+def _writable(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write_test"
+        probe.write_text("ok")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
 def _cache_dir() -> Path:
-    return Path(os.environ.get("REPORT_CACHE_DIR", config.ROOT / ".cache" / "reports"))
+    """REPORT_CACHE_DIR (or .cache/reports) if writable, else the system temp dir, so the
+    disk cache also works on read-only or sandboxed hosts like Streamlit Community Cloud."""
+    preferred = Path(os.environ.get("REPORT_CACHE_DIR") or config.ROOT / ".cache" / "reports")
+    if _writable(preferred):
+        return preferred
+    return Path(tempfile.gettempdir()) / "moneyball-reports"
 
 
 def _cache_key(player: dict) -> str:
@@ -199,7 +240,7 @@ def call_model(facts: str) -> str:
     from google import genai
     from google.genai import errors, types
 
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = genai.Client(api_key=setting("GEMINI_API_KEY"))
     name = model_name()
     cfg = dict(system_instruction=SYSTEM_INSTRUCTION, temperature=0.3, max_output_tokens=1024)
     if name.startswith("gemini-2.5-flash"):

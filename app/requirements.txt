@@ -1,0 +1,19 @@
+# Streamlit Community Cloud installs this file (it sits next to the entrypoint,
+# app/streamlit_app.py), so training deps (mlflow, xgboost, duckdb, optuna) stay out of
+# the cloud build. Versions must match requirements-deploy.txt (enforced by a test):
+# model.joblib was pickled with exactly these scikit-learn / LightGBM versions.
+scikit-learn==1.7.2
+lightgbm==4.7.0
+numpy==2.4.6
+scipy==1.17.1
+pandas==2.3.3
+pyarrow==25.0.1
+joblib==1.6.0
+
+streamlit==1.65.0
+plotly==7.1.0
+httpx==0.28.1
+pydantic==2.13.5
+
+google-genai==2.28.0
+python-dotenv==1.2.4

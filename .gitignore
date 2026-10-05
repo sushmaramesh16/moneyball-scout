@@ -26,3 +26,6 @@ __pycache__/
 # Local caches & build output
 .cache/
 dist/
+
+# Streamlit secrets (local) - never commit
+.streamlit/secrets.toml
