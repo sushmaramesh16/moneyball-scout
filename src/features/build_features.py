@@ -30,6 +30,8 @@ def _sql_list(values) -> str:
 
 LEAGUES = _sql_list(config.LEAGUES)
 EURO = _sql_list(config.EURO_COMPS)
+EU_EEA = _sql_list(config.EU_EEA_CITIZENSHIPS)
+UK = _sql_list(config.UK_CITIZENSHIPS)
 TRANSFER_SEASON = (
     "lpad((season % 100)::VARCHAR, 2, '0') || '/' || lpad(((season + 1) % 100)::VARCHAR, 2, '0')"
 )
@@ -350,7 +352,7 @@ def _targets_and_history(con: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
-FINAL_SQL = """
+FINAL_SQL = f"""
 SELECT
     cur.player_id, cur.season,
     cur.season || '/' || lpad(((cur.season + 1) % 100)::VARCHAR, 2, '0') AS season_label,
@@ -362,6 +364,9 @@ SELECT
     date_diff('day', pl.date_of_birth, cur.end_date) / 365.25 AS age,
     pl.height_cm, pl.foot, pl.citizenship,
     (coalesce(pl.citizenship = cur.country_name, false))::INT AS is_domestic,
+    (coalesce(pl.citizenship IN {EU_EEA}, false)
+     OR coalesce(pl.citizenship IN {UK} AND cur.end_date < DATE '{config.BREXIT_DATE}', false)
+    )::INT AS is_eu_eea,
     coalesce(cur.season_position, pl.profile_position) AS position,
     coalesce(pm.position_group, pl.profile_position_group) AS position_group,
 

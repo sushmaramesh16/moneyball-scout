@@ -10,13 +10,19 @@ TARGET = "y"  # ln(target_value) - market_index (season-start global index)
 TARGET_VALUE = "target_value"  # euros, for reporting on the original scale
 INDEX_COL = "market_index"  # add back to predictions: value = exp(pred + market_index)
 
-CATEGORICAL = ["league", "position", "position_group", "foot", "citizenship"]
+# Every string-valued panel column a model could use (pipelines one-hot / native-encode these).
+CATEGORICAL_COLUMNS = ("league", "position", "position_group", "foot", "citizenship")
+
+# citizenship itself is not a feature (stage-4 decision): the model would learn the market's
+# nationality premium. It is replaced by is_domestic and is_eu_eea (point-in-time, Brexit).
+CATEGORICAL = ["league", "position", "position_group", "foot"]
 
 NUMERIC = [
     # profile
     "age",
     "height_cm",
     "is_domestic",
+    "is_eu_eea",
     # season (all competitions, up to the league's final matchday)
     "apps",
     "starts",

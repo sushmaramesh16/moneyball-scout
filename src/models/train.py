@@ -196,14 +196,102 @@ def compare() -> pd.DataFrame:
     return results
 
 
+CLUB_FEE_FEATURES = [
+    "club_net_spend_rel",
+    "club_fees_in_rel",
+    "club_fees_out_rel",
+    "club_fee_disclosed_share",
+]
+# Decision rule fixed before running: keep club fees only if they cut validation RMSE
+# by at least this much AND the paired-bootstrap 95% CI of the gap excludes zero.
+FEE_KEEP_MIN_GAIN = 0.010
+
+
+def ablate() -> pd.DataFrame:
+    """Stage-4 feature decisions with default LightGBM on 2023/24 validation."""
+    warnings.filterwarnings("ignore", category=UserWarning)
+    mlflow.set_tracking_uri(TRACKING_URI)
+    mlflow.set_experiment("moneyball-ablation")
+    out_dir = config.ROOT / "reports" / "stage4"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    train, valid = load_split()
+
+    stage3 = [c for c in fs.feature_columns("main") if c != "is_eu_eea"]
+    if "citizenship" not in stage3:
+        stage3 += ["citizenship"]
+    for c in CLUB_FEE_FEATURES:
+        if c not in stage3:
+            stage3.append(c)
+    no_fees = [c for c in stage3 if c not in CLUB_FEE_FEATURES]
+
+    def run(label, features):
+        model = pipelines.build("lightgbm", features).fit(train[features], train[fs.TARGET])
+        y_hat = model.predict(valid[features])
+        value_hat = evaluate.to_euros(y_hat, valid[fs.INDEX_COL])
+        scores = evaluate.metrics(valid[fs.TARGET], y_hat, valid[fs.TARGET_VALUE], value_hat)
+        with mlflow.start_run(run_name=label):
+            mlflow.log_params({"variant": label, "n_features": len(features)})
+            mlflow.log_metrics({f"val_{k}": v for k, v in scores.items()})
+            mlflow.log_text(json.dumps(features, indent=1), "features.json")
+        print(
+            f"{label:38s} rmse={scores['rmse']:.4f} r2={scores['r2']:.4f} "
+            f"medae=€{scores['medae_eur']:,.0f}"
+        )
+        return y_hat, scores
+
+    rows, preds = [], {}
+    for label, feats in [
+        ("A stage-3 (fees + citizenship)", stage3),
+        ("B without club fees", no_fees),
+    ]:
+        preds[label], scores = run(label, feats)
+        rows.append({"variant": label, **scores})
+
+    gap = evaluate.paired_bootstrap_rmse_diff(
+        valid[fs.TARGET], preds[rows[0]["variant"]], preds[rows[1]["variant"]]
+    )
+    keep_fees = -gap["diff"] >= FEE_KEEP_MIN_GAIN and gap["ci_high"] < 0
+    print(
+        f"fees: RMSE(with) - RMSE(without) = {gap['diff']:+.4f} "
+        f"(95% CI {gap['ci_low']:+.4f} to {gap['ci_high']:+.4f}) -> "
+        f"{'KEEP' if keep_fees else 'DROP'} (rule: gain >= {FEE_KEEP_MIN_GAIN} and CI < 0)"
+    )
+
+    base = stage3 if keep_fees else no_fees
+    flags = [c for c in base if c != "citizenship"] + ["is_eu_eea"]  # is_domestic already in
+    label_c = f"C {'A' if keep_fees else 'B'} with citizenship -> flags"
+    preds[label_c], scores = run(label_c, flags)
+    rows.append({"variant": label_c, **scores})
+    base_label = rows[0 if keep_fees else 1]["variant"]
+    gap_c = evaluate.paired_bootstrap_rmse_diff(valid[fs.TARGET], preds[label_c], preds[base_label])
+    print(
+        f"citizenship -> flags: RMSE change {gap_c['diff']:+.4f} "
+        f"(95% CI {gap_c['ci_low']:+.4f} to {gap_c['ci_high']:+.4f})"
+    )
+
+    result = pd.DataFrame(rows)
+    result.to_csv(out_dir / "ablation.csv", index=False)
+    (out_dir / "ablation_decisions.json").write_text(
+        json.dumps(
+            {
+                "keep_club_fees": bool(keep_fees),
+                "fee_gap": gap,
+                "citizenship_to_flags_gap": gap_c,
+                "rule": f"keep fees iff RMSE gain >= {FEE_KEEP_MIN_GAIN} and 95% CI excludes 0",
+            },
+            indent=2,
+        )
+    )
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("command", choices=["compare"])
+    parser.add_argument("command", choices=["compare", "ablate"])
     args = parser.parse_args()
-    if args.command == "compare":
-        compare()
+    {"compare": compare, "ablate": ablate}[args.command]()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+{
+  "keep_club_fees": true,
+  "fee_gap": {
+    "diff": -0.013213704155340233,
+    "ci_low": -0.018518099467018753,
+    "ci_high": -0.00813669565288978
+  },
+  "citizenship_to_flags_gap": {
+    "diff": 0.009266935516076436,
+    "ci_low": 0.005438256581456786,
+    "ci_high": 0.013426736227784931
+  },
+  "rule": "keep fees iff RMSE gain >= 0.01 and 95% CI excludes 0"
+}

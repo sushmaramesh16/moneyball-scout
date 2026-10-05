@@ -16,15 +16,15 @@ from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 from xgboost import XGBRegressor
 
-from src.features.feature_sets import CATEGORICAL
+from src.features.feature_sets import CATEGORICAL_COLUMNS
 
 SEED = 42
 MIN_CATEGORY_COUNT = 20  # rarer levels (mostly citizenships) are pooled into "other"
 
 
 def split_columns(features: list[str]) -> tuple[list[str], list[str]]:
-    cats = [c for c in features if c in CATEGORICAL]
-    nums = [c for c in features if c not in CATEGORICAL]
+    cats = [c for c in features if c in CATEGORICAL_COLUMNS]
+    nums = [c for c in features if c not in CATEGORICAL_COLUMNS]
     return nums, cats
 
 
@@ -166,18 +166,20 @@ def _xgboost(nums, cats) -> Pipeline:
     )
 
 
-def _lightgbm(nums, cats) -> Pipeline:
+LGBM_DEFAULTS = dict(
+    n_estimators=1000,
+    learning_rate=0.03,
+    num_leaves=63,
+    min_child_samples=20,
+    subsample=0.8,
+    subsample_freq=1,
+    colsample_bytree=0.8,
+)
+
+
+def _lightgbm(nums, cats, params: dict | None = None) -> Pipeline:
     model = LGBMRegressor(
-        n_estimators=1000,
-        learning_rate=0.03,
-        num_leaves=63,
-        min_child_samples=20,
-        subsample=0.8,
-        subsample_freq=1,
-        colsample_bytree=0.8,
-        random_state=SEED,
-        n_jobs=-1,
-        verbose=-1,
+        **(LGBM_DEFAULTS | (params or {})), random_state=SEED, n_jobs=-1, verbose=-1
     )
     return Pipeline(
         [("select", ColumnSelector(nums + cats)), ("cats", CategoryCaster(cats)), ("model", model)]
@@ -193,8 +195,13 @@ BUILDERS = {
 }
 
 
-def build(name: str, features: list[str]):
+def build(name: str, features: list[str], params: dict | None = None):
+    """Pipeline for ``name``. ``params`` overrides LightGBM hyperparameters (tuned values)."""
     if name == "last_value_baseline":
         return LastValueBaseline()
     nums, cats = split_columns(features)
+    if name == "lightgbm":
+        return _lightgbm(nums, cats, params)
+    if params:
+        raise ValueError(f"params are only supported for lightgbm, not {name!r}")
     return BUILDERS[name](nums, cats)

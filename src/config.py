@@ -42,3 +42,50 @@ LIVE_SEASON = 2025
 
 # Backtest: "12 months later" valuation, searched within +/- this many days of target + 365
 FUTURE_WINDOW_DAYS = 60
+
+# EU/EEA citizenship as Transfermarkt spells it. Overseas territories whose people hold
+# French/Dutch nationality are included; the Faroe Islands are not part of the EU.
+EU_EEA_CITIZENSHIPS = (
+    "Austria",
+    "Belgium",
+    "Bulgaria",
+    "Croatia",
+    "Cyprus",
+    "Czech Republic",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Lithuania",
+    "Luxembourg",
+    "Malta",
+    "Netherlands",
+    "Poland",
+    "Portugal",
+    "Romania",
+    "Slovakia",
+    "Slovenia",
+    "Spain",
+    "Sweden",
+    "Iceland",
+    "Liechtenstein",
+    "Norway",
+    "French Guiana",
+    "Guadeloupe",
+    "Martinique",
+    "Saint-Martin",
+    "New Caledonia",
+    "Neukaledonien",
+    "Aruba",
+    "Curacao",
+    "Bonaire",
+)
+# UK nations count as EU for seasons that ended before Brexit took effect.
+UK_CITIZENSHIPS = ("England", "Scotland", "Wales", "Northern Ireland")
+BREXIT_DATE = "2021-01-01"

@@ -101,3 +101,15 @@ def test_backtest_columns(panel):
     assert r.outcome_log_change == pytest.approx(0.0)
     assert r.outcome_rel_change == pytest.approx(-(r.index_at_future - r.index_at_target))
     assert pd.isna(row(panel, 101, 2015).outcome_future_value)  # no data a year later
+
+
+def test_eu_eea_flag_respects_brexit(tmp_path):
+    from synthetic import write_raw
+
+    from src.features.build_features import build_panel
+
+    # 101 is English: EU citizen for seasons ending before 2021-01-01 only.
+    panel = build_panel(write_raw(tmp_path / "raw"), first_season=2014)
+    assert row(panel, 101, 2014).is_eu_eea == 1
+    assert row(panel, 102, 2014).is_eu_eea == 0  # Brazil
+    assert row(panel, 103, 2014).is_eu_eea == 1  # Spain
