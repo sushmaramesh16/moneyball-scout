@@ -103,7 +103,6 @@ DISPLAY_COLS = [
     "club_name",
     "league_name",
     "season_label",
-    "image_url",
     "contract_expiration_date",
     "end_date",
     "target_date",
@@ -130,3 +129,35 @@ def feature_columns(kind: str = "main") -> list[str]:
     if kind == "ceiling":
         return list(CEILING_FEATURES)
     raise ValueError(f"Unknown feature set: {kind!r}")
+
+
+# For explanations: is a driver about the player's situation or about what he did on the
+# pitch? Used to tell users when an "undervalued" flag rests mostly on context.
+CONTEXT_FEATURES = [
+    "age",
+    "height_cm",
+    "is_domestic",
+    "is_eu_eea",
+    "league",
+    "league_index_rel",
+    "position",
+    "position_group",
+    "foot",
+    "n_clubs_season",
+    "changed_club",
+    "changed_league",
+    "club_position",
+    "club_position_pct",
+    "club_ppg",
+    "club_gd_per_game",
+    "club_in_europe",
+    "club_players_used",
+    "club_avg_age",
+    "club_foreign_share",
+    "club_net_spend_rel",
+    "club_fees_in_rel",
+    "club_fees_out_rel",
+    "club_n_transfers",
+    "club_fee_disclosed_share",
+]
+PERFORMANCE_FEATURES = [f for f in MAIN_FEATURES if f not in CONTEXT_FEATURES]

@@ -122,8 +122,7 @@ def register_clean_tables(con: duckdb.DuckDBPyConnection) -> None:
                nullif(trim(country_of_citizenship), '') AS citizenship,
                pm.position AS profile_position,
                pm.position_group AS profile_position_group,
-               CAST(contract_expiration_date AS DATE) AS contract_expiration_date,
-               image_url
+               CAST(contract_expiration_date AS DATE) AS contract_expiration_date
         FROM raw_players p
         LEFT JOIN position_map pm
           ON pm.raw_lower = lower(trim(coalesce(p.sub_position, p.position)))

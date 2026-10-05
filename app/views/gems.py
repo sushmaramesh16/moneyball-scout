@@ -54,7 +54,7 @@ table = pd.DataFrame(
         "Rank": df["rank"],
         "Player": df["name"],
         "Club": df["club_name"],
-        "League": df["league"],
+        "League": df["league"].map(leagues),
         "Position": df["position"],
         "Age": df["age"].round(1),
         "Actual (€M)": df["actual_value"] / 1e6,

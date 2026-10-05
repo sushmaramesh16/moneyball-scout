@@ -88,7 +88,18 @@ def _pad_x(fig: go.Figure, xs: list[float], pad: float = 0.22) -> go.Figure:
     return fig
 
 
+def initials(name: str) -> str:
+    parts = [w for w in name.replace("-", " ").split() if w[:1].isalpha()]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
 def _feature_text(item: dict) -> str:
+    if item.get("display"):
+        return f"{item['label']}: {item['display']}"
     v = item["value"]
     if v is None:
         shown = "unknown"

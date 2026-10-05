@@ -36,7 +36,6 @@ PLAYERS = [
         height_in_cm=182,
         country_of_citizenship="England",
         contract_expiration_date="2030-06-30",
-        image_url="x",
     ),
     dict(
         player_id=102,
@@ -48,7 +47,6 @@ PLAYERS = [
         height_in_cm=190,
         country_of_citizenship="Brazil",
         contract_expiration_date=None,
-        image_url="x",
     ),
     dict(
         player_id=103,
@@ -60,7 +58,6 @@ PLAYERS = [
         height_in_cm=None,
         country_of_citizenship="Spain",
         contract_expiration_date=None,
-        image_url="x",
     ),
     dict(
         player_id=104,
@@ -72,7 +69,6 @@ PLAYERS = [
         height_in_cm=195,
         country_of_citizenship="Spain",
         contract_expiration_date=None,
-        image_url="x",
     ),
 ]
 LINEUP_POSITION = {101: "Centre-Forward", 102: "Centre-Back", 103: "midfield", 104: "Goalkeeper"}

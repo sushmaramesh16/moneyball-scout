@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from src import config
-from src.explain import shap_explain
+from src.explain import report, shap_explain
 from src.features import feature_sets as fs
 
 REPORTS_DIR = config.ROOT / "reports" / "stage4"
@@ -35,7 +35,6 @@ PROFILE_FIELDS = [
     "foot",
     "height_cm",
     "citizenship",
-    "image_url",
     "season_label",
 ]
 STAT_FIELDS = [
@@ -55,6 +54,31 @@ STAT_FIELDS = [
     "club_ppg",
     "club_in_europe",
 ]
+
+
+def driver_summary(contributions: list[dict]) -> dict:
+    """How much of the prediction (vs the average player) comes from context (age, club,
+    league...) versus on-pitch performance. 'context' / 'performance' when one side
+    supplies at least twice the lift of the other, else 'mixed'."""
+    groups = {"context": set(fs.CONTEXT_FEATURES), "performance": set(fs.PERFORMANCE_FEATURES)}
+    totals = {
+        g: sum(c["shap"] for c in contributions if c["feature"] in members)
+        for g, members in groups.items()
+    }
+    ctx, perf = totals["context"], totals["performance"]
+    if ctx > 0 and ctx >= 2 * max(perf, 0):
+        driver = "context"
+    elif perf > 0 and perf >= 2 * max(ctx, 0):
+        driver = "performance"
+    else:
+        driver = "mixed"
+    return {
+        "context_shap": ctx,
+        "performance_shap": perf,
+        "context_effect_pct": float(np.expm1(ctx) * 100),
+        "performance_effect_pct": float(np.expm1(perf) * 100),
+        "driver": driver,
+    }
 
 
 class PlayerNotFound(KeyError):
@@ -105,6 +129,33 @@ class ScoutService:
     @cached_property
     def shap_global(self) -> pd.DataFrame:
         return pd.read_csv(self.artifacts_dir / "shap_global.csv")
+
+    @cached_property
+    def intervals(self) -> dict | None:
+        path = self.artifacts_dir / "prediction_intervals.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def value_range(self, predicted_value: float) -> dict | None:
+        """Likely range for the actual value, from how far actual values fell from
+        predictions on the held-out 2024/25 season (per predicted-value band)."""
+        if not self.intervals:
+            return None
+        band = self.intervals["band_labels"][
+            int(np.searchsorted(self.intervals["band_edges_eur"], predicted_value, "right"))
+        ]
+        q = self.intervals["bands"][band]
+        return {
+            "middle_50": [
+                predicted_value * math.exp(q["q25"]),
+                predicted_value * math.exp(q["q75"]),
+            ],
+            "middle_80": [
+                predicted_value * math.exp(q["q10"]),
+                predicted_value * math.exp(q["q90"]),
+            ],
+            "band": band,
+            "source": self.intervals["source"],
+        }
 
     @property
     def market_index(self) -> float:
@@ -162,6 +213,7 @@ class ScoutService:
             "actual_value": _clean(row["target_value"]),
             "valuation_date": _clean(pd.Timestamp(row["target_date"])),
             "predicted_value": _clean(row["pred_value"]),
+            "predicted_range": self.value_range(float(row["pred_value"])),
             "undervalued_score": _clean(row["undervalued_score_debiased"]),
             "undervalued_score_raw": _clean(row["undervalued_score"]),
             "contract_expiration_date": _clean(pd.Timestamp(row["contract_expiration_date"])),
@@ -171,14 +223,17 @@ class ScoutService:
     def explain(self, player_id: int) -> dict:
         """Full SHAP breakdown for a live player (stored at export time)."""
         row = self._row(player_id)
+        mi = float(row["market_index"])
         contributions = []
         for f in self.features:
             shap = float(row[f"shap_{f}"])
+            value = _clean(row[f])
             contributions.append(
                 {
                     "feature": f,
                     "label": shap_explain.label(f),
-                    "value": _clean(row[f]),
+                    "value": value,
+                    "display": shap_explain.display_value(f, value, mi),
                     "shap": shap,
                     "effect_pct": float(np.expm1(shap) * 100),
                 }
@@ -193,7 +248,8 @@ class ScoutService:
             "predicted_value": float(row["pred_value"]),
             "actual_value": float(row["target_value"]),
             "contributions": contributions,
-            "top_factors": json.loads(row["top_factors"]),
+            "top_factors": contributions[:5],
+            "drivers": driver_summary(contributions),
         }
 
     def undervalued(
@@ -241,12 +297,41 @@ class ScoutService:
             "prediction": y_hat,
             "predicted_value": value,
             "market_index": self.market_index,
-            "top_factors": json.loads(shap_explain.top_factors(shap_df, X)[0]),
+            "predicted_range": self.value_range(value),
+            "top_factors": [
+                f
+                | {
+                    "display": shap_explain.display_value(
+                        f["feature"], f["value"], self.market_index
+                    )
+                }
+                for f in json.loads(shap_explain.top_factors(shap_df, X)[0])
+            ],
         }
         if actual_value:
             out["actual_value"] = float(actual_value)
             out["undervalued_score_raw"] = value / float(actual_value) - 1
         return out
+
+    # ---- AI scouting report -----------------------------------------------------------
+    def reports_enabled(self) -> bool:
+        return report.is_available()
+
+    @cached_property
+    def reliability(self) -> dict:
+        """Numbers the report may quote about the model's own accuracy."""
+        tm = self._csv("test_metrics.csv").set_index("model").loc["lightgbm_tuned"]
+        bt = self._csv("backtest.csv").query("season == 2024").set_index(["strategy", "k"])
+        return {
+            "typical_error_pct": float(tm["median_pct_error"] * 100),
+            "hit_rate": float(bt.loc[("model_debiased", "top_decile"), "hit_raw"]),
+            "base_rate": float(bt.loc[("all", "all"), "hit_raw"]),
+        }
+
+    def scouting_report(self, player_id: int, force: bool = False) -> dict:
+        return report.generate(
+            self.player(player_id), self.explain(player_id), self.reliability, force=force
+        )
 
     # ---- model & backtest reports ----------------------------------------------------
     def _csv(self, name: str) -> pd.DataFrame:

@@ -13,6 +13,7 @@ import os
 
 import httpx
 
+from src.explain import report
 from src.service import ScoutService, get_service
 
 
@@ -23,7 +24,11 @@ class LocalBackend:
         self.svc = service or get_service()
 
     def reports_enabled(self) -> bool:
-        return False  # the LLM scouting-report module is added in the next stage
+        return self.svc.reports_enabled()
+
+    def report(self, player_id, refresh=False):
+        """Report dict, or raises ReportRateLimited / ReportError / ReportUnavailable."""
+        return self.svc.scouting_report(player_id, force=refresh)
 
     def filter_options(self):
         return self.svc.filter_options()
@@ -65,6 +70,16 @@ class ApiBackend:
 
     def reports_enabled(self) -> bool:
         return bool(self._get("/health").get("reports_enabled"))
+
+    def report(self, player_id, refresh=False):
+        r = self.http.get(f"/report/{player_id}", params={"refresh": refresh})
+        if r.status_code == 429:
+            raise report.ReportRateLimited(float(r.headers.get("Retry-After", 30)))
+        if r.status_code == 503:
+            raise report.ReportUnavailable(r.json().get("detail", "unavailable"))
+        if r.status_code >= 400:
+            raise report.ReportError(r.json().get("detail", f"HTTP {r.status_code}"))
+        return r.json()
 
     def filter_options(self):
         return self._get("/filters")

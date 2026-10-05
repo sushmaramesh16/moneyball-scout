@@ -14,7 +14,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
-from xgboost import XGBRegressor
 
 from src.features.feature_sets import CATEGORICAL_COLUMNS
 
@@ -148,6 +147,8 @@ def _random_forest(nums, cats) -> Pipeline:
 
 
 def _xgboost(nums, cats) -> Pipeline:
+    from xgboost import XGBRegressor  # training only: keeps the deployed app free of xgboost
+
     model = XGBRegressor(
         n_estimators=1000,
         learning_rate=0.03,

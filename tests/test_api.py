@@ -113,8 +113,71 @@ def test_unknown_player_is_404(client):
         assert client.get(path).status_code == 404
 
 
-def test_report_unavailable_until_enabled(client, live):
+def test_report_unavailable_without_key(client, live):
+    assert client.get("/health").json()["reports_enabled"] is False
     assert client.get(f"/report/{int(live.index[0])}").status_code == 503
+
+
+@pytest.fixture
+def fake_llm(monkeypatch):
+    from src.explain import report
+
+    calls = []
+
+    def fake(facts):
+        calls.append(facts)
+        return "The player is a centre-back whose valuation rests mostly on context. " * 2
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(report, "call_model", fake)
+    return calls
+
+
+def test_report_generated_grounded_and_cached(client, live, fake_llm):
+    pid = int(live["undervalued_score_debiased"].idxmax())
+    assert client.get("/health").json()["reports_enabled"] is True
+    first = client.get(f"/report/{pid}").json()
+    assert first["ai_generated"] is True and first["cached"] is False
+    assert first["disclaimer"] and first["model"]
+    second = client.get(f"/report/{pid}").json()
+    assert second["cached"] is True and second["report"] == first["report"]
+    assert len(fake_llm) == 1  # cached: the model was called once
+    facts = fake_llm[0]
+    assert live.loc[pid, "name"] in facts and "Main drivers" in facts
+    assert "Likely range" in facts and "typical error" in facts
+    assert "http" not in facts  # no URLs / photos passed to the model
+
+
+def test_report_rate_limit_returns_429(client, live, monkeypatch):
+    from src.explain import report
+
+    def limited(facts):
+        raise report.ReportRateLimited(17)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(report, "call_model", limited)
+    r = client.get(f"/report/{int(live.index[0])}")
+    assert r.status_code == 429 and r.headers["retry-after"] == "17"
+
+
+def test_no_photo_urls_in_responses(client, live):
+    pid = int(live.index[0])
+    for path in (f"/players/{pid}", f"/explain/{pid}", "/undervalued?limit=5"):
+        assert "image_url" not in client.get(path).text
+    assert "image_url" not in live.columns
+
+
+def test_player_has_value_range_and_explain_has_drivers(client, live):
+    pid = int(live["undervalued_score_debiased"].idxmax())
+    p = client.get(f"/players/{pid}").json()
+    lo80, hi80 = p["predicted_range"]["middle_80"]
+    lo50, hi50 = p["predicted_range"]["middle_50"]
+    assert lo80 < lo50 < p["predicted_value"] < hi50 < hi80
+    ex = client.get(f"/explain/{pid}").json()
+    assert ex["drivers"]["driver"] in {"context", "performance", "mixed"}
+    total = ex["drivers"]["context_shap"] + ex["drivers"]["performance_shap"]
+    assert total == pytest.approx(sum(c["shap"] for c in ex["contributions"]))
+    assert all(c["display"] for c in ex["contributions"])
 
 
 def test_search_and_backtest_and_importance(client):

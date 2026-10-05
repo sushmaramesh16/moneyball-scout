@@ -1,0 +1,20 @@
+# Runtime for the app (Streamlit + FastAPI). Exact pins: model.joblib was pickled with
+# these scikit-learn / LightGBM versions and must be loaded with the same ones.
+scikit-learn==1.7.2
+lightgbm==4.7.0
+numpy==2.4.6
+scipy==1.17.1
+pandas==2.3.3
+pyarrow==25.0.1
+joblib==1.6.0
+
+streamlit==1.65.0
+plotly==7.1.0
+
+fastapi==0.142.2
+uvicorn==0.54.0
+pydantic==2.13.5
+httpx==0.28.1
+
+google-genai==2.28.0
+python-dotenv==1.2.4

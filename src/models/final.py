@@ -3,6 +3,7 @@
 Usage:
     python -m src.models.final test     # train <= 2023/24, score 2024/25; refuses to rerun
     python -m src.models.final live     # train <= 2024/25, score 2025/26, export artifacts
+    python -m src.models.final intervals  # residual spread on 2024/25 -> value ranges
 
 ``live`` writes the deployment artifacts:
     artifacts/model.joblib          the full sklearn pipeline (preprocessing + LightGBM)
@@ -10,6 +11,11 @@ Usage:
                                     predicted value, both undervalued scores, SHAP values
                                     and top-5 SHAP factors
     artifacts/shap_global.csv       global mean |SHAP| importance
+
+``intervals`` writes artifacts/prediction_intervals.json: quantiles of the 2024/25 test
+residuals (actual - predicted, log scale) per predicted-value band, used to show a value
+range instead of a point estimate. It refits the same model the test used (seasons
+<= 2023/24, tuned params); no modelling choice depends on it.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from pathlib import Path
 
 import joblib
 import mlflow
+import numpy as np
 import pandas as pd
 
 from src import config
@@ -36,6 +43,8 @@ TEST_MARKER = REPORTS_DIR / "test_metrics.csv"
 MODEL_PATH = config.ARTIFACTS_DIR / "model.joblib"
 LIVE_TABLE_PATH = config.ARTIFACTS_DIR / "players_live.parquet"
 SHAP_GLOBAL_PATH = config.ARTIFACTS_DIR / "shap_global.csv"
+INTERVALS_PATH = config.ARTIFACTS_DIR / "prediction_intervals.json"
+INTERVAL_QUANTILES = (0.10, 0.25, 0.75, 0.90)
 
 LIVE_DISPLAY = [
     "player_id",
@@ -47,7 +56,6 @@ LIVE_DISPLAY = [
     "league",
     "league_name",
     "citizenship",
-    "image_url",
     "contract_expiration_date",
     "target_date",
     "target_value",
@@ -184,15 +192,53 @@ def run_live() -> pd.DataFrame:
     return table
 
 
+def run_intervals() -> dict:
+    """Residual quantiles of the test-season model, overall and per predicted-value band.
+    Errors are larger for cheap players, so one global range would mislead."""
+    warnings.filterwarnings("ignore", category=UserWarning)
+    panel = pd.read_parquet(config.PANEL_PATH)
+    train = panel[panel.season <= config.VALID_SEASON]
+    test = panel[panel.season == config.TEST_SEASON].reset_index(drop=True)
+    features = fs.feature_columns("main")
+    model = pipelines.build("lightgbm", features, load_best_params())
+    y_hat = model.fit(train[features], train[fs.TARGET]).predict(test[features])
+    resid = test[fs.TARGET].to_numpy() - y_hat
+    value_hat = evaluate.to_euros(y_hat, test[fs.INDEX_COL])
+    bands = pd.cut(value_hat, evaluate.VALUE_BINS, labels=evaluate.VALUE_LABELS, right=False)
+
+    def quantiles(r):
+        return {
+            f"q{int(q * 100):02d}": float(pd.Series(r).quantile(q)) for q in INTERVAL_QUANTILES
+        } | {"n": int(len(r))}
+
+    out = {
+        "source": f"residuals (log actual - log predicted) on the {config.TEST_SEASON}/"
+        f"{(config.TEST_SEASON + 1) % 100:02d} test season",
+        "band_edges_eur": [float(b) for b in evaluate.VALUE_BINS[1:-1]],
+        "band_labels": evaluate.VALUE_LABELS,
+        "overall": quantiles(resid),
+        "bands": {lab: quantiles(resid[bands == lab]) for lab in evaluate.VALUE_LABELS},
+    }
+    INTERVALS_PATH.write_text(json.dumps(out, indent=2))
+    for lab, q in out["bands"].items():
+        print(
+            f"{lab:8s} n={q['n']:5d}  50%: x{np.exp(q['q25']):.2f}-x{np.exp(q['q75']):.2f}"
+            f"  80%: x{np.exp(q['q10']):.2f}-x{np.exp(q['q90']):.2f}"
+        )
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("command", choices=["test", "live"])
+    parser.add_argument("command", choices=["test", "live", "intervals"])
     parser.add_argument("--force", action="store_true", help="re-run the one-time test")
     args = parser.parse_args()
     if args.command == "test":
         run_test(force=args.force)
+    elif args.command == "intervals":
+        run_intervals()
     else:
         run_live()
 

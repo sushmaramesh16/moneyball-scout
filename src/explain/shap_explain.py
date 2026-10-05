@@ -9,10 +9,13 @@ relative to the market index), so exp(contribution) is a multiplicative effect o
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
+
+from src import config
 
 BASE = "base_value"
 
@@ -70,6 +73,87 @@ FEATURE_LABELS = {
     "position_group": "Position group",
     "foot": "Preferred foot",
 }
+
+
+COUNT_FEATURES = {
+    "apps",
+    "starts",
+    "minutes",
+    "goals",
+    "assists",
+    "yellow_cards",
+    "red_cards",
+    "league_minutes",
+    "captain_games",
+    "euro_minutes",
+    "cup_minutes",
+    "n_clubs_season",
+    "prev_minutes",
+    "prev_apps",
+    "l3_seasons",
+    "l3_minutes",
+    "l3_goals",
+    "l3_assists",
+    "club_position",
+    "club_players_used",
+    "club_n_transfers",
+}
+FLAG_FEATURES = {
+    "is_domestic",
+    "is_eu_eea",
+    "changed_club",
+    "changed_league",
+    "prev_observed",
+    "club_in_europe",
+}
+SHARE_FEATURES = {
+    "league_minutes_share",
+    "start_share",
+    "club_foreign_share",
+    "club_fee_disclosed_share",
+}
+MONEY_FEATURES = {"club_net_spend_rel", "club_fees_in_rel", "club_fees_out_rel"}
+
+
+def _money(eur: float) -> str:
+    sign = "−" if eur < 0 else ""
+    eur = abs(eur)
+    if eur >= 1e6:
+        return f"{sign}€{eur / 1e6:.1f}M"
+    if eur >= 1e3:
+        return f"{sign}€{eur / 1e3:.0f}K"
+    return f"{sign}€{eur:.0f}"
+
+
+def display_value(feature: str, value, market_index: float | None = None) -> str:
+    """A feature value in plain terms, e.g. league_index_rel -0.85 -> '43% of market
+    average', club_fees_in_rel 0.65 (x market level) -> '€1.1M'."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "unknown"
+    if feature == "league":
+        return config.LEAGUE_NAMES.get(value, value)
+    if isinstance(value, str):
+        return value
+    v = float(value)
+    if feature == "league_index_rel":
+        return f"{math.exp(v) * 100:.0f}% of market average"
+    if feature in MONEY_FEATURES:
+        return _money(v * math.exp(market_index)) if market_index is not None else f"{v:.2f}"
+    if feature in FLAG_FEATURES:
+        return "yes" if v >= 0.5 else "no"
+    if feature in SHARE_FEATURES:
+        return f"{v:.0%}"
+    if feature == "club_position_pct":
+        return f"{v:.0%} of the way down the table"
+    if feature in ("age", "club_avg_age"):
+        return f"{v:.1f} years"
+    if feature == "height_cm":
+        return f"{v:.0f} cm"
+    if feature == "minutes_delta":
+        return f"{v:+,.0f} minutes"
+    if feature in COUNT_FEATURES:
+        return f"{v:,.0f}"
+    return f"{v:.2f}"
 
 
 def label(feature: str) -> str:

@@ -22,3 +22,7 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Local caches & build output
+.cache/
+dist/

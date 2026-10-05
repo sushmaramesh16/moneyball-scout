@@ -31,6 +31,13 @@ class RankedPlayer(PlayerSummary):
     rank: int
 
 
+class ValueRange(BaseModel):
+    middle_50: list[float] = Field(description="[low, high] euros: middle 50% of outcomes")
+    middle_80: list[float] = Field(description="[low, high] euros: middle 80% of outcomes")
+    band: str
+    source: str
+
+
 class PlayerDetail(BaseModel):
     player_id: int
     name: str
@@ -43,11 +50,11 @@ class PlayerDetail(BaseModel):
     foot: str | None
     height_cm: float | None
     citizenship: str | None
-    image_url: str | None
     season_label: str
     actual_value: float
     valuation_date: str | None
     predicted_value: float
+    predicted_range: ValueRange | None
     undervalued_score: float
     undervalued_score_raw: float
     contract_expiration_date: str | None = Field(
@@ -60,8 +67,17 @@ class Factor(BaseModel):
     feature: str
     label: str
     value: float | int | str | None
+    display: str | None = Field(default=None, description="Value in plain terms")
     shap: float = Field(description="Contribution to log(value / market index)")
     effect_pct: float = Field(description="exp(shap) - 1, in percent")
+
+
+class Drivers(BaseModel):
+    context_shap: float
+    performance_shap: float
+    context_effect_pct: float
+    performance_effect_pct: float
+    driver: Literal["context", "performance", "mixed"]
 
 
 class Explanation(BaseModel):
@@ -74,6 +90,7 @@ class Explanation(BaseModel):
     actual_value: float
     contributions: list[Factor]
     top_factors: list[Factor]
+    drivers: Drivers
 
 
 class PredictRequest(BaseModel):
@@ -107,6 +124,18 @@ class PredictResponse(BaseModel):
     prediction: float
     predicted_value: float
     market_index: float
+    predicted_range: ValueRange | None = None
     top_factors: list[Factor]
     actual_value: float | None = None
     undervalued_score_raw: float | None = None
+
+
+class Report(BaseModel):
+    player_id: int
+    report: str
+    model: str
+    prompt_version: str
+    generated_at: str
+    ai_generated: Literal[True]
+    disclaimer: str
+    cached: bool

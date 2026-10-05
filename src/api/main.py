@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 
 from src import config
 from src.api import schemas
+from src.explain import report as report_module
 from src.service import PlayerNotFound, ScoutService, get_service
 
 app = FastAPI(
@@ -21,8 +22,6 @@ app = FastAPI(
 )
 
 Service = Annotated[ScoutService, Depends(get_service)]
-
-REPORTS_ENABLED = False  # the LLM scouting-report module is added in the next stage
 
 
 def _player_or_404(fn, player_id: int):
@@ -40,7 +39,7 @@ def health(svc: Service):
         "status": "ok",
         "season": svc.season_label,
         "n_players": len(svc.players),
-        "reports_enabled": REPORTS_ENABLED,
+        "reports_enabled": svc.reports_enabled(),
     }
 
 
@@ -91,11 +90,23 @@ def explain(svc: Service, player_id: int):
     return _player_or_404(svc.explain, player_id)
 
 
-@app.get("/report/{player_id}")
-def report(svc: Service, player_id: int):
+@app.get("/report/{player_id}", response_model=schemas.Report)
+def report(svc: Service, player_id: int, refresh: bool = False):
+    """AI-generated scouting note grounded in the player's stats and SHAP drivers.
+    503 if no GEMINI_API_KEY is configured; 429 (with Retry-After) when rate limited."""
     _player_or_404(svc.player, player_id)
-    if not REPORTS_ENABLED:
-        raise HTTPException(503, "Scouting reports are not enabled on this server.")
+    try:
+        return svc.scouting_report(player_id, force=refresh)
+    except report_module.ReportUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except report_module.ReportRateLimited as exc:
+        raise HTTPException(
+            429,
+            "The AI report service is busy; please try again shortly.",
+            headers={"Retry-After": str(int(exc.retry_after))},
+        ) from None
+    except report_module.ReportError as exc:
+        raise HTTPException(502, str(exc)) from None
 
 
 @app.get("/backtest")

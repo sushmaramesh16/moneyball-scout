@@ -24,7 +24,6 @@ SCHEMAS: dict[str, tuple[dict[str, str], str | None]] = {
             "height_in_cm": "DOUBLE",
             "country_of_citizenship": "VARCHAR",
             "contract_expiration_date": "TIMESTAMP",
-            "image_url": "VARCHAR",
         },
         None,
     ),

@@ -357,7 +357,7 @@ SELECT
     cur.player_id, cur.season,
     cur.season || '/' || lpad(((cur.season + 1) % 100)::VARCHAR, 2, '0') AS season_label,
     pl.name, cur.club_id, cl.name AS club_name, cur.league, cur.league_name,
-    pl.image_url, pl.contract_expiration_date,
+    pl.contract_expiration_date,
     cur.start_date, cur.end_date, t.target_date, t.target_value,
 
     -- profile

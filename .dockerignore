@@ -1,0 +1,19 @@
+# Keep the image small and secret-free: only what the Dockerfile copies is needed.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+data
+mlruns
+mlartifacts
+mlflow.db
+.cache
+dist
+tests
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.DS_Store
