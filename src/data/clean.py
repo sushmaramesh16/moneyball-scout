@@ -14,17 +14,26 @@ import pandas as pd
 # Canonical sub-positions (as in players.sub_position) and their broad group.
 SUB_POSITION_GROUP = {
     "Goalkeeper": "Goalkeeper",
-    "Centre-Back": "Defender", "Left-Back": "Defender", "Right-Back": "Defender",
-    "Defensive Midfield": "Midfield", "Central Midfield": "Midfield",
-    "Attacking Midfield": "Midfield", "Left Midfield": "Midfield", "Right Midfield": "Midfield",
-    "Left Winger": "Attack", "Right Winger": "Attack", "Centre-Forward": "Attack",
+    "Centre-Back": "Defender",
+    "Left-Back": "Defender",
+    "Right-Back": "Defender",
+    "Defensive Midfield": "Midfield",
+    "Central Midfield": "Midfield",
+    "Attacking Midfield": "Midfield",
+    "Left Midfield": "Midfield",
+    "Right Midfield": "Midfield",
+    "Left Winger": "Attack",
+    "Right Winger": "Attack",
+    "Centre-Forward": "Attack",
     "Second Striker": "Attack",
 }
 
 # Spellings seen in game_lineups.position that are not canonical sub-positions.
 POSITION_ALIASES = {
     "sweeper": "Centre-Back",
-    "attack": "Attack", "defender": "Defender", "midfield": "Midfield",
+    "attack": "Attack",
+    "defender": "Defender",
+    "midfield": "Midfield",
     "goalkeeper": "Goalkeeper",
 }
 
@@ -86,8 +95,10 @@ def season_label(season: int) -> str:
 
 def _position_map_frame() -> pd.DataFrame:
     rows = [(k, k, v) for k, v in SUB_POSITION_GROUP.items()]
-    rows += [(alias, normalize_position(alias), position_group(normalize_position(alias)))
-             for alias in POSITION_ALIASES]
+    rows += [
+        (alias, normalize_position(alias), position_group(normalize_position(alias)))
+        for alias in POSITION_ALIASES
+    ]
     df = pd.DataFrame(rows, columns=["raw_lower", "position", "position_group"])
     df["raw_lower"] = df["raw_lower"].str.lower()
     return df.drop_duplicates("raw_lower")
@@ -149,7 +160,8 @@ def register_clean_tables(con: duckdb.DuckDBPyConnection) -> None:
                player_club_domestic_competition_id AS league
         FROM raw_player_valuations
         WHERE market_value_in_eur > 0
-        QUALIFY row_number() OVER (PARTITION BY player_id, date ORDER BY market_value_in_eur DESC) = 1
+        QUALIFY row_number() OVER (PARTITION BY player_id, date
+                                   ORDER BY market_value_in_eur DESC) = 1
     """)
 
     # transfer_fee: 0 = free transfer, NULL = undisclosed (kept distinct on purpose).

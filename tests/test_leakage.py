@@ -234,3 +234,31 @@ def test_no_main_feature_is_a_proxy_for_the_target(real_builds):
     numeric = [c for c in fs.feature_columns("main") if c not in fs.CATEGORICAL]
     corr = full[numeric].corrwith(full[fs.TARGET]).abs()
     assert corr.max() < 0.9, corr.sort_values().tail(3)
+
+
+def _signing(player_id):
+    return {
+        "transfers": [
+            dict(
+                player_id=player_id,
+                transfer_date=date(2014, 7, 20),
+                transfer_season="14/15",
+                from_club_id=50,
+                to_club_id=1,
+                transfer_fee=20_000_000.0,
+            )
+        ]
+    }
+
+
+def test_own_transfer_fee_excluded_from_club_spend(tmp_path, panel):
+    """A player's own fee is a price for him (value history), so it must not reach the
+    main model through his club's spend; another player's fee must."""
+    own = build_panel(write_raw(tmp_path / "own", _signing(101)), first_season=2014)
+    other = build_panel(write_raw(tmp_path / "other", _signing(555)), first_season=2014)
+    base = row(panel, 101, 2014)
+    for col in ("club_fees_in_rel", "club_net_spend_rel"):
+        assert row(own, 101, 2014)[col] == pytest.approx(base[col])
+        assert row(other, 101, 2014)[col] == pytest.approx(
+            base[col] + 20e6 / np.exp(base.market_index)
+        )

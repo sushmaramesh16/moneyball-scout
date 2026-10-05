@@ -12,9 +12,21 @@ import pandas as pd
 from src import config
 from src.features.feature_sets import CATEGORICAL, CEILING_FEATURES, TARGET
 
-REQUIRED_NON_NULL = ["player_id", "season", "league", "club_id", "end_date", "target_date",
-                     "target_value", "age", "minutes", "apps", "market_index", TARGET,
-                     "position_group"]
+REQUIRED_NON_NULL = [
+    "player_id",
+    "season",
+    "league",
+    "club_id",
+    "end_date",
+    "target_date",
+    "target_value",
+    "age",
+    "minutes",
+    "apps",
+    "market_index",
+    TARGET,
+    "position_group",
+]
 
 # column -> (min, max), inclusive; NaN allowed unless the column is in REQUIRED_NON_NULL
 RANGES = {

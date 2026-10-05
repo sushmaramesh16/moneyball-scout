@@ -21,6 +21,7 @@ import pandas as pd
 
 from src import config
 from src.data import clean, load, validate
+from src.features import feature_sets
 
 
 def _sql_list(values) -> str:
@@ -233,6 +234,22 @@ def _club_seasons(con: duckdb.DuckDBPyConnection) -> None:
         GROUP BY ALL
     """)
 
+    # The player's own fee into/out of his club that season. Subtracted from the club's
+    # totals in the final table: a player's own fee is a market price for him (i.e. value
+    # history), which the main model must not see.
+    con.execute(f"""
+        CREATE OR REPLACE TABLE own_fees AS
+        SELECT p.player_id, p.season,
+               coalesce(sum(t.fee) FILTER (WHERE t.to_club_id = p.club_id), 0) AS own_in,
+               coalesce(sum(t.fee) FILTER (WHERE t.from_club_id = p.club_id), 0) AS own_out
+        FROM ps_main p
+        JOIN clean_transfers t
+          ON t.player_id = p.player_id
+         AND t.transfer_season = {TRANSFER_SEASON.replace("season", "p.season")}
+         AND t.transfer_date <= p.end_date
+        GROUP BY ALL
+    """)
+
 
 def _market_index(con: duckdb.DuckDBPyConnection) -> None:
     """Market level at the start of each season (1 July), global and per league.
@@ -379,10 +396,14 @@ SELECT
     cs.club_ppg, cs.club_gd_per_game,
     coalesce(ce.club_in_europe, false)::INT AS club_in_europe,
     sq.club_players_used, sq.club_avg_age, sq.club_foreign_share,
-    (coalesce(ct.club_fees_in, 0) - coalesce(ct.club_fees_out, 0)) / exp(gi.idx)
+    -- club spend excludes the player's own fee (see own_fees)
+    ((coalesce(ct.club_fees_in, 0) - coalesce(own.own_in, 0))
+     - (coalesce(ct.club_fees_out, 0) - coalesce(own.own_out, 0))) / exp(gi.idx)
         AS club_net_spend_rel,
-    coalesce(ct.club_fees_in, 0) / exp(gi.idx) AS club_fees_in_rel,
-    coalesce(ct.club_fees_out, 0) / exp(gi.idx) AS club_fees_out_rel,
+    (coalesce(ct.club_fees_in, 0) - coalesce(own.own_in, 0)) / exp(gi.idx)
+        AS club_fees_in_rel,
+    (coalesce(ct.club_fees_out, 0) - coalesce(own.own_out, 0)) / exp(gi.idx)
+        AS club_fees_out_rel,
     coalesce(ct.club_n_transfers, 0) AS club_n_transfers,
     ct.club_fee_disclosed_share,
 
@@ -427,6 +448,7 @@ LEFT JOIN club_season cs ON cs.club_id = cur.club_id AND cs.season = cur.season
 LEFT JOIN club_europe ce ON ce.club_id = cur.club_id AND ce.season = cur.season
 LEFT JOIN club_squad sq ON sq.club_id = cur.club_id AND sq.season = cur.season
 LEFT JOIN club_transfers ct ON ct.club_id = cur.club_id AND ct.season = cur.season
+LEFT JOIN own_fees own ON own.player_id = cur.player_id AND own.season = cur.season
 JOIN market_index gi ON gi.season = cur.season AND gi.league = '_ALL'
 LEFT JOIN market_index li ON li.season = cur.season AND li.league = cur.league
 LEFT JOIN market_index gi_t ON gi_t.season = cur.season + 1 AND gi_t.league = '_ALL'
@@ -458,6 +480,10 @@ def build_panel(
     _targets_and_history(con)
     df = con.execute(FINAL_SQL, {"first_season": first_season, "min_minutes": min_minutes}).df()
     con.close()
+    # Plain float64 for every numeric feature: DuckDB returns nullable Int32/Int64 with
+    # pd.NA, which scikit-learn rejects.
+    numeric = [c for c in feature_sets.CEILING_FEATURES if c not in feature_sets.CATEGORICAL]
+    df[numeric] = df[numeric].astype("float64")
     return df
 
 

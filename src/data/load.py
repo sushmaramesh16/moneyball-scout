@@ -13,45 +13,100 @@ import duckdb
 
 # table -> (columns with DuckDB types, date column used for as_of truncation or None)
 SCHEMAS: dict[str, tuple[dict[str, str], str | None]] = {
-    "players": ({
-        "player_id": "BIGINT", "name": "VARCHAR", "date_of_birth": "TIMESTAMP",
-        "position": "VARCHAR", "sub_position": "VARCHAR", "foot": "VARCHAR",
-        "height_in_cm": "DOUBLE", "country_of_citizenship": "VARCHAR",
-        "contract_expiration_date": "TIMESTAMP", "image_url": "VARCHAR",
-    }, None),
+    "players": (
+        {
+            "player_id": "BIGINT",
+            "name": "VARCHAR",
+            "date_of_birth": "TIMESTAMP",
+            "position": "VARCHAR",
+            "sub_position": "VARCHAR",
+            "foot": "VARCHAR",
+            "height_in_cm": "DOUBLE",
+            "country_of_citizenship": "VARCHAR",
+            "contract_expiration_date": "TIMESTAMP",
+            "image_url": "VARCHAR",
+        },
+        None,
+    ),
     "clubs": ({"club_id": "BIGINT", "name": "VARCHAR", "domestic_competition_id": "VARCHAR"}, None),
-    "competitions": ({
-        "competition_id": "VARCHAR", "name": "VARCHAR", "type": "VARCHAR",
-        "country_name": "VARCHAR",
-    }, None),
-    "games": ({
-        "game_id": "BIGINT", "competition_id": "VARCHAR", "season": "BIGINT", "date": "DATE",
-        "home_club_id": "BIGINT", "away_club_id": "BIGINT", "home_club_goals": "BIGINT",
-        "away_club_goals": "BIGINT", "home_club_position": "BIGINT",
-        "away_club_position": "BIGINT", "competition_type": "VARCHAR",
-    }, "date"),
-    "appearances": ({
-        "game_id": "BIGINT", "player_id": "BIGINT", "player_club_id": "BIGINT", "date": "DATE",
-        "competition_id": "VARCHAR", "yellow_cards": "BIGINT", "red_cards": "BIGINT",
-        "goals": "BIGINT", "assists": "BIGINT", "minutes_played": "BIGINT",
-    }, "date"),
-    "game_lineups": ({
-        "game_id": "BIGINT", "player_id": "BIGINT", "club_id": "BIGINT", "date": "DATE",
-        "type": "VARCHAR", "position": "VARCHAR", "team_captain": "BIGINT",
-    }, "date"),
-    "player_valuations": ({
-        "player_id": "BIGINT", "date": "DATE", "market_value_in_eur": "BIGINT",
-        "player_club_domestic_competition_id": "VARCHAR",
-    }, "date"),
-    "transfers": ({
-        "player_id": "BIGINT", "transfer_date": "DATE", "transfer_season": "VARCHAR",
-        "from_club_id": "BIGINT", "to_club_id": "BIGINT", "transfer_fee": "DOUBLE",
-    }, "transfer_date"),
+    "competitions": (
+        {
+            "competition_id": "VARCHAR",
+            "name": "VARCHAR",
+            "type": "VARCHAR",
+            "country_name": "VARCHAR",
+        },
+        None,
+    ),
+    "games": (
+        {
+            "game_id": "BIGINT",
+            "competition_id": "VARCHAR",
+            "season": "BIGINT",
+            "date": "DATE",
+            "home_club_id": "BIGINT",
+            "away_club_id": "BIGINT",
+            "home_club_goals": "BIGINT",
+            "away_club_goals": "BIGINT",
+            "home_club_position": "BIGINT",
+            "away_club_position": "BIGINT",
+            "competition_type": "VARCHAR",
+        },
+        "date",
+    ),
+    "appearances": (
+        {
+            "game_id": "BIGINT",
+            "player_id": "BIGINT",
+            "player_club_id": "BIGINT",
+            "date": "DATE",
+            "competition_id": "VARCHAR",
+            "yellow_cards": "BIGINT",
+            "red_cards": "BIGINT",
+            "goals": "BIGINT",
+            "assists": "BIGINT",
+            "minutes_played": "BIGINT",
+        },
+        "date",
+    ),
+    "game_lineups": (
+        {
+            "game_id": "BIGINT",
+            "player_id": "BIGINT",
+            "club_id": "BIGINT",
+            "date": "DATE",
+            "type": "VARCHAR",
+            "position": "VARCHAR",
+            "team_captain": "BIGINT",
+        },
+        "date",
+    ),
+    "player_valuations": (
+        {
+            "player_id": "BIGINT",
+            "date": "DATE",
+            "market_value_in_eur": "BIGINT",
+            "player_club_domestic_competition_id": "VARCHAR",
+        },
+        "date",
+    ),
+    "transfers": (
+        {
+            "player_id": "BIGINT",
+            "transfer_date": "DATE",
+            "transfer_season": "VARCHAR",
+            "from_club_id": "BIGINT",
+            "to_club_id": "BIGINT",
+            "transfer_fee": "DOUBLE",
+        },
+        "transfer_date",
+    ),
 }
 
 
-def connect(raw_dir: Path, as_of: str | None = None,
-            con: duckdb.DuckDBPyConnection | None = None) -> duckdb.DuckDBPyConnection:
+def connect(
+    raw_dir: Path, as_of: str | None = None, con: duckdb.DuckDBPyConnection | None = None
+) -> duckdb.DuckDBPyConnection:
     """Register one ``raw_<table>`` view per CSV in ``raw_dir``.
 
     ``as_of`` (ISO date) drops every dated row after that day: the dataset as it would
